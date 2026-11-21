@@ -1,67 +1,80 @@
-# SOURCE.md - Project Proposals
+# Data Source and Schema
 
-## Proposal 1: Predicting Ahuzot HaHof Parking Availability in Tel Aviv
+## 1. Source Information
 
-**Preference:** 1 - our first choice.
+| Property | Details |
+|---|---|
+| Source name | Tel Aviv Municipality - Ahuzot HaHof Parking Garages |
+|Source URL | http://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/970 |
+| Data format | JSON (ArcGIS REST API) |
+| Authentication | No API key or login required |
+| License | Tel Aviv Municipality information Use License: free, non-exclusive use, subject to attribution and license conditions. No separate license is specified for GIS layer 970. |
+| Planned collection frequency | Every 30 minutes |
 
-**Research question and description:** Can we predict which Ahuzot HaHof parking garages in Tel Aviv will be full at a given time? We plan to collect live availability snapshots for the garages, including garage name, identifier, address, availability status and status time. We will examine patterns by hour and weekday, potentially alongside weather conditions.
+## 2. Data Collection Description
 
-**Sources and URLs:**
-- Tel Aviv municipality's live GIS/API layer (Ahuzot HaHof garages, layer 970): https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/970
-- Official Ahuzot HaHof parking directory: https://www.ahuzot.co.il/Parking/All/
-- Open-Meteo weather API: https://open-meteo.com/en/docs
+We collect JSON snapshots from the Tel Aviv Municipality's ArcGIS API. Each snapshot contains information about Ahuzot HaHof parking garages,
+including their identifiers, names, addresses, geographic locations, reported parking statuses,
+status timestamps, parking tariffs, and tariff-related notes.
 
-**Update frequency:** Garage statuses are updated live (each record carries its own status timestamp). We plan to collect a snapshot every 30 minutes. Weather will be matched hourly.
+The collected snapshots will be used to build a historical dataset, analyze parking availability patterns over time,
+and investigate whether we can predict which garages will be full at a given time. 
 
-**Estimated size per sample:** About 5-30 KB of filtered JSON per snapshot. At 48 snapshots a day, this stays well below 500 MB for the semester.
+## 3. Dataset Schema
 
-**Authentication:** None. The municipal ArcGIS layer offers a public JSON query interface with no API key, and Open-Meteo needs no key for non-commercial use.
+Each row in dataset.csv will represent one parking garage in one collected snapshot.
 
-**Data sample (selected fields from a live municipal API response, November 7, 2026):**
+| Column | Description | Data Type / Units |
+|---|---|---|
+| code_achoza | Unique parking garage code | Integer |
+| shem_chenyon | Parking garage name | Text |
+| ktovet | Parking garage address | Text |
+| lat | Geographic latitude | Decimal degrees |
+| lon | Geographic longitude | Decimal degrees |
+| status_chenyon | Reported parking garage status | Text; categorical (may be empty) |
+| tr_status_chenyon | Status update timestamp | Unix timestamp; milliseconds |
+| taarif_yom | Daytime parking tariff information | Text; prices in ILS |
+| chalon_taarif_yom | Additional daytime tariff details and time conditions | Text; hours and prices where applicable |
+| taarif_layla | Nighttime parking tariff information | Text; prices in ILS |
+| chalon_zman_taarif_layla | Nighttime tariff details and applicable times | Text; hours and prices where applicable |
+| hearot_taarif | Additional tariff notes and parking conditions | Text; no fixed units |
+| collected_at_utc | Date and time when the snapshot was collected | UTC datetime; ISO 8601 |
 
-Query: `https://gisn.tel-aviv.gov.il/ArcGIS/rest/services/IView2/MapServer/970/query?where=1%3D1&outFields=*&returnGeometry=false&f=json`
+## 4. Column Selection
 
-```json
-{
-  "code_achoza": 11,
-  "shem_chenyon": "תל - נורדאו",
-  "ktovet": "פרישמן 28 תל-אביב יפו",
-  "lat": 32.0797,
-  "lon": 34.7718,
-  "status_chenyon": "מלא",
-  "tr_status_chenyon": 1794066756240
-}
-```
+We selected the garage code, name, address, and coordinates to identify and locate each parking garage.
+We kept the reported status and its timestamp because they are important for our research question.
+We also included parking tariffs and tariff notes to examine whether pricing and parking conditions are related to garage availability.
+The collected_at_utc column will be derived from each raw file's date and time, allowing us to compare snapshots collected at different times.
+We excluded additional technical identifiers because code_achoza is sufficient to identify each garage.
+We also excluded x and y because we already have latitude and longitude.
+Additional tariff fields and the opening-hours field were excluded because they were empty in the inspected snapshot.
+We excluded the parking capacity fields because almost all their values were zero, providing little useful information in this sample.
+We also excluded date_import because it was empty, and UniqueId because it had the same value for every garage in the sample.
 
-`status_chenyon` is the garage status (`פנוי` available, `מעט` limited, `מלא` full, `סגור` closed), and `tr_status_chenyon` is the status timestamp (Unix epoch, milliseconds).
+## 5. Field Name Mapping
 
-**Why collect it ourselves?** The API returns only current parking statuses and does not provide historical snapshots. Our repeated snapshots will create a new historical dataset for predicting availability. We will confirm that the municipal data's terms of use allow this collection.
+| Original Field | Dataset Column |
+|---|---|
+| code_achoza | code_achoza |
+| shem_chenyon | shem_chenyon |
+| ktovet | ktovet |
+| lat | lat |
+| lon | lon |
+| status_chenyon | status_chenyon |
+| tr_status_chenyon | tr_status_chenyon |
+| taarif_yom | taarif_yom |
+| chalon_taarif_yom | chalon_taarif_yom |
+| taarif_layla | taarif_layla |
+| chalon_zman_taarif_layla | chalon_zman_taarif_layla |
+| hearot_taarif | hearot_taarif |
+| File date and time (UTC) | collected_at_utc |
 
-## Proposal 2: Predicting Netflix Top 10 Success
+The original field names will be kept unchanged in dataset.csv.
+The collected_at_utc column will be derived from the date and time in each raw file's path.
 
-**Preference:** 2 - our second choice.
+## 6. Estimated Storage Size
 
-**Research question and description:** Can the popularity of a TV series on TMDB help predict whether it will enter Netflix's weekly Top 10? We plan to save daily snapshots of trending series (title, ID, position and popularity), then compare them with Netflix's official weekly TV rankings, matching the same series across sources.
+We plan to collect one snapshot every 30 minutes, which means 48 snapshots per day. Automated collection is expected to run from semester week 6 through the end of week 12 (7 weeks total). At this frequency, we expect approximately 2,352 automated snapshots (48 × 7 × 7). An inspected JSON snapshot is about 121 KB, so the estimated raw size for automated collection is 121 KB × 2,352 ≈ 285 MB (decimal units). To estimate the size of dataset.csv, we considered only the 13 columns selected for our dataset, giving an estimated 41 KB per snapshot, or approximately 96 MB over the same period. The four manually collected initial snapshots will add a small amount to these estimates. Actual sizes may vary with the data, and partial weeks or interruptions may reduce the final snapshot count.
 
-**Sources and URLs:**
-- TMDB Trending TV API: https://api.themoviedb.org/3/trending/tv/day
-- TMDB documentation: https://developer.themoviedb.org/reference/trending-tv
-- Netflix official Top 10: https://www.netflix.com/tudum/top10
-- Netflix global rankings file: https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv
 
-**Update frequency:** TMDB trending is updated daily, we will collect once a day. Netflix publishes the Top 10 weekly and we will collect once a week.
-
-**Estimated size per sample:** About 10-30 KB for one page of TMDB JSON, and 1-3 MB for the complete Netflix global rankings file. Total under 500 MB.
-
-**Authentication:** A free TMDB API key is required (non-commercial use with attribution). The Netflix Top 10 file is public and needs no login. API keys will not be committed to the public repository.
-
-**Data sample (row from Netflix's official `all-weeks-global.tsv`):**
-
-```
-week        category      weekly_rank  show_title  season_title           weekly_hours_viewed  runtime  weekly_views  cumulative_weeks_in_top_10
-2026-10-18  TV (English)  1            Below       Below: Limited Series  86400000             4.0667   21200000      2
-```
-
-For the week ending October 18, 2026, *Below: Limited Series* ranked #1 in English TV with 21,200,000 views.
-
-**Why collect it ourselves?** Netflix already publishes past Top 10 lists, but TMDB's trending list is rolling and not archived. Our time-stamped history of TMDB trending, linked to later Netflix results, is the new data.
